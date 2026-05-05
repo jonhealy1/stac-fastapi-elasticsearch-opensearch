@@ -40,10 +40,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
-- **Smart API Validation Routing:** API endpoints (`create_item`, `update_item`) now intelligently bypass synchronous STAC validation when `ENABLE_REDIS_QUEUE` is active, allowing the API to return instantly while the background worker handles validation. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
-- **Detailed API Error Responses:** Bulk insertion endpoints now return detailed `400 Bad Request` JSON payloads mapping specific `item_id`s to their validation errors, and will no longer return `201 Created` if 0 items were successfully inserted. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
-- **Non-Blocking API Validation:** Wrapped direct-API Python STAC validation in `asyncio.to_thread` to prevent CPU-bound schema checking from blocking the FastAPI event loop. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
-- Refactored Redis queue handling in `create_item()` by extracting duplicate queue code into a new `queue_items_if_enabled()` utility function in `utilities.py`. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
 - Added dependabot to check for updates to gh-actions weekly. [#686](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/686)
 - Improved `mappings.py` for code reusability. [#643](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/643)
 

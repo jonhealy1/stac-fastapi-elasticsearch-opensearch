@@ -12,7 +12,31 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Added `ENABLE_STAC_VALIDATOR` environment variable to enable strict STAC schema validation on ingestion via the Python `stac-validator`. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
 - Added `[validator]` installation extra to `stac-fastapi-core`, `elasticsearch`, and `opensearch` packages. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
 - Added CQL2 Abstract Syntax Tree (AST) structure for efficient query parsing and datetime-based indexes. [#659](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/659)
+- Added test for conformance endpoint in catalogs extension. [#727](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/727)
+
+### Changed
+
+### Fixed
+
+### Removed
+
+- geojson-pydantic dependency. [#728](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/728)
+
+### Updated
+
+- Updated catalogs extension to v0.2.0. [#727](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/727)
+
+## [v6.16.0] - 2026-04-16
+
+### Added
+
+- Updated item index name generator (`index_by_collection_id`) to use hashlib instead of hex encoding. [#661](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/661)
+- Added customizable root `/queryables` endpoint with dynamic union (`ROOT_QUERYABLES_UNION`) and static override (`STAC_QUERYABLES_CONFIG`) configuration options. [#612](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/612)
+- Added advice to Readme about linking an already existing Collection to a Catalog, simply by POSTing the collection's ID. [#646](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/646)
+- Added CQL2 Abstract Syntax Tree (AST) structure for efficient query parsing and datetime-based indexes. [#659](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/659)
 - Made `ES_MAX_URL_LENGTH` configurable via environment variable (default: `4096`). This value should match the `http.max_initial_line_length` setting in your Elasticsearch/OpenSearch server configuration. [#656](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/656)
+- Added Docker Compose deployment files for quick setup with pre-built images from GHCR. [#707](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/707)
+- Added custom mappings integration for Dynamic Templates and Collections. Added logic to merge list of dict for Dynamic Template. [#643](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/643)
 
 ### Changed
 
@@ -21,10 +45,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - **Non-Blocking API Validation:** Wrapped direct-API Python STAC validation in `asyncio.to_thread` to prevent CPU-bound schema checking from blocking the FastAPI event loop. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
 - Refactored Redis queue handling in `create_item()` by extracting duplicate queue code into a new `queue_items_if_enabled()` utility function in `utilities.py`. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
 - Added dependabot to check for updates to gh-actions weekly. [#686](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/686)
-
-### Fixed
-
-### Removed
+- Improved `mappings.py` for code reusability. [#643](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/643)
 
 ### Security
 
@@ -32,6 +53,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Updated
 
+- Updated Elasticsearch version in CI/CD compose.yml to 9.3.2 from 8.19.5 [#688](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/688)
+- Updated `elasticsearch[async]` Python dependency from ~=8.19.1 to >=8.19.1,<9.4.0 [#688](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/688)
+- Simplified, cleaned up CI/CD GitHub workflow in `cicd.yml` [#688](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/688)
 - Updated, loosened fastapi, uvicorn and starlette libraries and moved shared deps to core. [#687](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/687)
 
 ## [v6.15.0] - 2026-04-04
@@ -868,7 +892,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.15.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.16.0...main
+[v6.16.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.15.0...v6.16.0
 [v6.15.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.14.1...v6.15.0
 [v6.14.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.14.0...v6.14.1
 [v6.14.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.13.0...v6.14.0

@@ -64,6 +64,9 @@ redis = [
 server = [
     "uvicorn[standard]>=0.23,<0.47",
 ]
+validator = [
+    "stac-fastapi-core[validator]==6.16.0",
+]
 
 [project.scripts]
 stac-fastapi-opensearch = "stac_fastapi.opensearch.app:run"

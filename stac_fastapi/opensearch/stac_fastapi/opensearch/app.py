@@ -77,12 +77,14 @@ ENABLE_COLLECTIONS_SEARCH_ROUTE = get_bool_env(
     "ENABLE_COLLECTIONS_SEARCH_ROUTE", default=False
 )
 ENABLE_CATALOGS_ROUTE = get_bool_env("ENABLE_CATALOGS_ROUTE", default=False)
+ENABLE_STAC_VALIDATOR = get_bool_env("ENABLE_STAC_VALIDATOR", default=False)
 logger.info("TRANSACTIONS_EXTENSIONS is set to %s", TRANSACTIONS_EXTENSIONS)
 logger.info("ENABLE_COLLECTIONS_SEARCH is set to %s", ENABLE_COLLECTIONS_SEARCH)
 logger.info(
     "ENABLE_COLLECTIONS_SEARCH_ROUTE is set to %s", ENABLE_COLLECTIONS_SEARCH_ROUTE
 )
 logger.info("ENABLE_CATALOGS_ROUTE is set to %s", ENABLE_CATALOGS_ROUTE)
+logger.info("ENABLE_STAC_VALIDATOR is set to %s", ENABLE_STAC_VALIDATOR)
 
 settings = OpensearchSettings()
 session = Session.create_from_settings(settings)
@@ -218,15 +220,25 @@ if ENABLE_COLLECTIONS_SEARCH_ROUTE:
 
 if ENABLE_CATALOGS_ROUTE:
     try:
-        from stac_fastapi_catalogs_extension import CatalogsExtension
+        from stac_fastapi_catalogs_extension import (
+            CatalogsExtension,
+            CatalogsTransactionExtension,
+        )
 
         from stac_fastapi.core.catalogs_client import CatalogsClient
 
+        catalogs_client = CatalogsClient(database=database_logic)
+
         catalogs_extension = CatalogsExtension(
-            client=CatalogsClient(database=database_logic),
-            enable_transactions=True,
+            client=catalogs_client,
+            settings=settings.model_dump(),
+        )
+        catalogs_transaction_extension = CatalogsTransactionExtension(
+            client=catalogs_client,
+            settings=settings.model_dump(),
         )
         extensions.append(catalogs_extension)
+        extensions.append(catalogs_transaction_extension)
     except ImportError as e:
         logger.warning(
             "ENABLE_CATALOGS_ROUTE is set to true, but the catalogs extension is not installed. "

@@ -9,13 +9,24 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Added `ENABLE_STAC_VALIDATOR` environment variable to enable strict STAC schema validation on ingestion via the Python `stac-valid` package. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
+- Added `[validator]` installation extra to `stac-fastapi-core`, `elasticsearch`, and `opensearch` packages. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
+- Added CQL2 Abstract Syntax Tree (AST) structure for efficient query parsing and datetime-based indexes. [#659](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/659)
+- Added test for conformance endpoint in catalogs extension. [#727](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/727)
+
 ### Changed
+
+- Updated STAC validation from batch_validator to FastValidator for improved performance using fastjsonschema. [#729](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/729)
 
 ### Fixed
 
 ### Removed
 
+- geojson-pydantic dependency. [#728](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/728)
+
 ### Updated
+
+- Updated catalogs extension to v0.2.0. [#727](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/727)
 
 ## [v6.16.0] - 2026-04-16
 

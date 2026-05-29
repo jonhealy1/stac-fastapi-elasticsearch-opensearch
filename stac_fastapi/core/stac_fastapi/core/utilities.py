@@ -387,12 +387,9 @@ def build_bulk_summary(
     conflict_count = len(conflict_errors) if conflict_errors else 0
     database_error_count = len(other_errors) if other_errors else 0
 
-    # Calculate total skipped dynamically based on what layer failed
-    skipped_total = (
-        (len(raw_features) - len(processed_items))  # input duplicates
-        + validation_error_count
-        + conflict_count
-    )
+    # Calculate total skipped: items that failed preprocessing or validation
+    # (NOT including database conflicts, which are items that passed validation)
+    skipped_total = (len(raw_features) - len(processed_items)) + validation_error_count
 
     return {
         "input_count": len(raw_features),

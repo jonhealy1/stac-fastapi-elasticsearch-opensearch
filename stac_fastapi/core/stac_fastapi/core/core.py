@@ -1231,7 +1231,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             database=self.database, settings=self.settings
         )
         processed_items = []
-        skipped_db_duplicates = 0
+        preprocessing_errors: dict[str, list[str]] = {}
 
         for feature in unique_features:
             try:
@@ -1239,12 +1239,19 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 if prepped is not None:
                     processed_items.append(prepped)
                 else:
-                    skipped_db_duplicates += 1
+                    # Item returned None from preprocessing (likely a duplicate)
+                    err_msg = "Preprocessing: Item skipped (likely database duplicate)"
+                    if err_msg not in preprocessing_errors:
+                        preprocessing_errors[err_msg] = []
+                    preprocessing_errors[err_msg].append(feature.get("id", "unknown"))
             except Exception as e:
+                err_msg = f"Preprocessing error: {str(e)}"
+                if err_msg not in preprocessing_errors:
+                    preprocessing_errors[err_msg] = []
+                preprocessing_errors[err_msg].append(feature.get("id", "unknown"))
                 logger.warning(
                     f"Failed to preprocess item {feature.get('id', 'unknown')}: {e}"
                 )
-                skipped_db_duplicates += 1
 
         # 3. VALIDATION LAYER
         validate_before_queue = get_bool_env("VALIDATE_BEFORE_QUEUE", default=True)
@@ -1418,32 +1425,37 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         # Fix Spot 3: Database writes failed completely
         if success == 0:
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "message": "No items were added to the database.",
-                    "summary": build_bulk_summary(
-                        raw_features,
-                        processed_items,
-                        valid_items,
-                        validation_error_count,
-                        conflict_errors,
-                        other_errors,
-                    ),
-                    "validation_errors": validation_errors,
-                    "conflict_errors": format_conflict_errors(conflict_errors)
-                    if conflict_errors
-                    else {},
-                },
-            )
+            error_detail = {
+                "message": "No items were added to the database.",
+                "summary": build_bulk_summary(
+                    raw_features,
+                    processed_items,
+                    valid_items,
+                    validation_error_count,
+                    conflict_errors=conflict_errors,
+                    other_errors=other_errors,
+                ),
+            }
+            if preprocessing_errors:
+                error_detail["preprocessing_errors"] = preprocessing_errors
+            if validation_errors:
+                error_detail["validation_errors"] = validation_errors
+            if conflict_errors:
+                error_detail["conflict_errors"] = format_conflict_errors(
+                    conflict_errors
+                )
+            if other_errors:
+                error_detail["database_errors"] = other_errors
+            raise HTTPException(status_code=400, detail=error_detail)
 
+        preprocessing_error_count = count_validation_errors(preprocessing_errors)
         message_parts = [f"Processed {len(raw_features)} items: {success} added"]
         if skipped_batch_duplicates > 0:
             message_parts.append(f"{skipped_batch_duplicates} input duplicates")
+        if preprocessing_error_count > 0:
+            message_parts.append(f"{preprocessing_error_count} preprocessing errors")
         if validation_error_count > 0:
             message_parts.append(f"{validation_error_count} validation errors")
-        if skipped_db_duplicates > 0:
-            message_parts.append(f"{skipped_db_duplicates} preprocessing skipped")
         if len(conflict_errors) > 0:
             message_parts.append(f"{len(conflict_errors)} conflicts")
         if len(other_errors) > 0:
@@ -1452,6 +1464,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         response: dict = {"message": " | ".join(message_parts)}
         if successfully_added_ids:
             response["successfully_added"] = successfully_added_ids
+        if preprocessing_errors:
+            response["preprocessing_errors"] = preprocessing_errors
         if validation_errors:
             response["validation_errors"] = validation_errors
         if conflict_errors:

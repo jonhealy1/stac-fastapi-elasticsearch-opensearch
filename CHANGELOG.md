@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+### Updated
+
+- Updated stac-fastapi parent dependencies from v6.3.0 -> v6.3.2 [#786](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/786)
+
+## [v6.19.0] - 2025-06-23
+
+### Added
+
+- Added `CatalogsSearchExtension` support to enable scoped search within catalogs and their descendants. Catalog search uses BFS DAG traversal to discover all descendant collections and enforces scope with 403 Forbidden when users request out-of-scope collections. Supports all search parameters (datetime, intersects, sortby, limit, token) via pass-through to core search logic. [#782](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/782)
+
+### Fixed
+
+- Fixed test suite compatibility with FastAPI >= 0.137.0 by applying a monkey-patch to `add_route_dependencies` that safely recurses through `_IncludedRouter` wrappers. Also fixed "shared state leak" in `app_basic_auth` fixture by rebuilding extensions and clients to prevent route mutations from affecting other tests. [#784](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/784)
+- Fixed CQL2 `LIKE` filters silently returning no results on `GET /search`, `GET /aggregate`, and `GET /collections` when the search term began with a valid percent-escape (e.g. `%banks%`, `%data%`). Query parameters are already URL-decoded by Starlette, so the extra `unquote_plus` was double-decoding the filter and corrupting those terms; the decoded value is now parsed directly. [#783](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/783)
+
+### Updated
+
+- Updated stac-fastapi parent dependecies from v6.2.1 -> v6.3.0 [#784](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/784)
+- Updated `stac-fastapi-catalogs-extension` to `v0.5.0`. [#783](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/783)
+
+## [v6.18.0] - 2026-06-13
+
+### Added
+
 - Added `HIDE_ALTERNATE_PARENTS` environment variable (default `False`) to suppress `rel="related"` and `rel="duplicate"` links for alternate parents in poly-hierarchy. Useful for multi-tenant deployments to prevent information leakage about other tenants. When enabled, only the contextual `rel="parent"` link is advertised. [#768](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/768)
 - Added `VALIDATE_BEFORE_QUEUE` environment variable to control validation timing when using Redis queue. When set to `true` (default), validates items on the API thread before queuing for strict data quality. When set to `false`, defers validation to the background worker for maximum API throughput. Applies to single items, feature collections, and item updates. [#742](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/742)
 - Added `MAX_BATCH_SIZE` and `MAX_BATCH_ERROR_SIZE` environment variables to enable chunked validation with fail-fast thresholds. When `MAX_BATCH_SIZE` > 0, items are validated in chunks and validation stops immediately if errors exceed `MAX_BATCH_ERROR_SIZE`. This optimizes CPU usage for high-volume ingestion by preventing wasted validation cycles on hopelessly broken payloads. [#742](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/742)
@@ -16,12 +46,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Added `[validator]` installation extra to `stac-fastapi-core`, `elasticsearch`, and `opensearch` packages. [#742](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/742)
 - Added `ENABLE_TOPOLOGY_VALIDATION` environment variable to enable lightweight pure-Python validation of geospatial data. When enabled, validates all coordinates fall within WGS84 bounds (±180° longitude, ±90° latitude) and detects improper antimeridian crossing in Polygon and MultiPolygon geometries. Provides zero-dependency spatial validation that integrates seamlessly with chunked validation and fail-fast thresholds. [#742](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/742)
 - Added `MAX_TOPOLOGY_VERTICES` environment variable to set the maximum number of vertices allowed in polygon rings during topology validation. Defaults to 5000 vertices per ring. Prevents denial-of-service attacks from geometries with excessive vertices that could lock up the API thread. Only applies when `ENABLE_TOPOLOGY_VALIDATION` is enabled. [#742](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/742)
-
-### Changed
-
-### Fixed
-
-### Removed
 
 ### Updated
 
@@ -925,7 +949,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.17.2...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.19.0...main
+[v6.19.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.18.0...v6.19.0
+[v6.18.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.17.2...v6.18.0
 [v6.17.2]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.17.1...v6.17.2
 [v6.17.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.17.0...v6.17.1
 [v6.17.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.16.0...v6.17.0

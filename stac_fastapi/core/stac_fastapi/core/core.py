@@ -20,6 +20,7 @@ from stac_pydantic import Collection, Item, ItemCollection
 from stac_pydantic.links import Relations
 from stac_pydantic.shared import BBox, MimeTypes
 from stac_pydantic.version import STAC_VERSION
+from starlette.responses import Response
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
@@ -51,16 +52,16 @@ from stac_fastapi.core.validate import (
     validate_datetime_range,
     validate_item_topology_lightweight,
 )
-from stac_fastapi.extensions.core.transaction import AsyncBaseTransactionsClient
-from stac_fastapi.extensions.core.transaction.request import (
-    PartialCollection,
-    PartialItem,
-    PatchOperation,
-)
-from stac_fastapi.extensions.third_party.bulk_transactions import (
+from stac_fastapi.extensions.bulk_transactions import (
     BaseBulkTransactionsClient,
     BulkTransactionMethod,
     Items,
+)
+from stac_fastapi.extensions.transaction import AsyncBaseTransactionsClient
+from stac_fastapi.extensions.transaction.request import (
+    PartialCollection,
+    PartialItem,
+    PatchOperation,
 )
 from stac_fastapi.sfeos_helpers.database import (
     BulkIndexError,
@@ -418,15 +419,17 @@ class CoreClient(AsyncBaseCoreClient):
                         parsed_filter = filter_expr
                     elif filter_lang == "cql2-text" or filter_lang is None:
                         # For cql2-text or when no filter_lang is specified, try both formats
+                        # Query params are already percent-decoded by Starlette;
+                        # decoding again corrupts CQL2 LIKE patterns like "%banks%"
+                        # ("%ba" is a valid escape).
                         try:
                             # First try to parse as JSON
-                            parsed_filter = orjson.loads(unquote_plus(filter_expr))
+                            parsed_filter = orjson.loads(filter_expr)
                         except Exception:
                             # If that fails, use pygeofilter to convert CQL2-text to CQL2-JSON
                             try:
                                 # Parse CQL2-text and convert to CQL2-JSON
-                                text_filter = unquote_plus(filter_expr)
-                                parsed_ast = parse_cql2_text(text_filter)
+                                parsed_ast = parse_cql2_text(filter_expr)
                                 parsed_filter = to_cql2(parsed_ast)
                             except Exception as e:
                                 # If parsing fails, provide a helpful error message
@@ -435,8 +438,8 @@ class CoreClient(AsyncBaseCoreClient):
                                     detail=f"Invalid CQL2-text filter: {e}. Please check your syntax.",
                                 )
                     else:
-                        # For explicit cql2-json, parse as JSON
-                        parsed_filter = orjson.loads(unquote_plus(filter_expr))
+                        # Explicit cql2-json: already percent-decoded (see note above).
+                        parsed_filter = orjson.loads(filter_expr)
                 except Exception as e:
                     # Catch any other parsing errors
                     raise HTTPException(
@@ -768,8 +771,10 @@ class CoreClient(AsyncBaseCoreClient):
 
         if filter_expr:
             base_args["filter_lang"] = "cql2-json"
+            # Already percent-decoded by Starlette; decoding again would corrupt
+            # CQL2 LIKE patterns like "%banks%" ("%ba" is a valid escape).
             base_args["filter"] = orjson.loads(
-                unquote_plus(filter_expr)
+                filter_expr
                 if filter_lang == "cql2-json"
                 else to_cql2(parse_cql2_text(filter_expr))
             )
@@ -1118,7 +1123,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     @overrides
     async def create_item(
         self, collection_id: str, item: Item | ItemCollection, **kwargs
-    ) -> stac_types.Item | str | dict:
+    ) -> stac_types.Item | Response | None:
         """Create an item or a feature collection of items in the specified collection.
 
         Acts as a traffic router, inspecting the payload type and delegating to the
@@ -1130,10 +1135,10 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             **kwargs: Additional keyword arguments, such as `request`.
 
         Returns:
-            stac_types.Item | str | dict:
+            stac_types.Item | Response | None:
                 - Single item (DB): The created `Item` object.
-                - Single item (Queue): A success string.
-                - FeatureCollection: A dictionary summarizing successes, failures, and duplicates.
+                - Single item (Queue): A Response object.
+                - FeatureCollection: A Response object summarizing successes, failures, and duplicates.
 
         Raises:
             HTTPException: If payload validation or bulk database insertion fails.

@@ -16,11 +16,8 @@ from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.extensions.aggregation import EsAggregationExtensionPostRequest
 from stac_fastapi.core.session import Session
-from stac_fastapi.extensions.core.aggregation.client import AsyncBaseAggregationClient
-from stac_fastapi.extensions.core.aggregation.types import (
-    Aggregation,
-    AggregationCollection,
-)
+from stac_fastapi.extensions.aggregation.client import AsyncBaseAggregationClient
+from stac_fastapi.extensions.aggregation.types import Aggregation, AggregationCollection
 from stac_fastapi.types.rfc3339 import DateTimeType
 
 from .format import frequency_agg, metric_agg
@@ -214,7 +211,9 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
             return orjson.loads(to_cql2(parse_cql2_text(filter)))
         elif filter_lang == "cql2-json":
             if isinstance(filter, str):
-                return orjson.loads(unquote_plus(filter))
+                # Already percent-decoded by Starlette; decoding again would corrupt
+                # CQL2 LIKE patterns like "%banks%" ("%ba" is a valid escape).
+                return orjson.loads(filter)
             else:
                 return filter
         else:

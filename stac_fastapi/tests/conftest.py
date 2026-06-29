@@ -1,11 +1,14 @@
 import copy
 import json
 import os
-from typing import Any, Callable
+from typing import Any, Callable, List
 
 import pytest
 import pytest_asyncio
-from fastapi import Depends, HTTPException, security, status
+from fastapi import Depends, HTTPException
+from fastapi import params as fastapi_params
+from fastapi import security, status
+from fastapi.routing import BaseRoute
 from httpx import ASGITransport, AsyncClient
 from pydantic import ConfigDict
 from stac_pydantic import api
@@ -306,12 +309,48 @@ async def app_basic_auth():
     api = instantiate_api_local()
     app = api.app
 
-    # Create basic auth dependency wrapped in Depends
+    # 2. CRITICAL FIX: Rebuild extensions and clients from scratch!
+    # This ensures app_basic_auth gets its own fresh APIRouters.
+    # If we share the global extensions, our monkey-patch will poison
+    # the routes for the entire test suite (FastAPI >= 0.137 shared state leak).
+    auth_settings = AsyncSettings()
+    aggregation_extension = AggregationExtension(
+        client=EsAsyncBaseAggregationClient(
+            database=database, session=None, settings=auth_settings
+        )
+    )
+    aggregation_extension.POST = EsAggregationExtensionPostRequest
+    aggregation_extension.GET = EsAggregationExtensionGetRequest
+
+    auth_extensions = [
+        aggregation_extension,
+        FieldsExtension(),
+        SortExtension(),
+        QueryExtension(),
+        TokenPaginationExtension(),
+        FilterExtension(),
+        FreeTextExtension(),
+        TransactionExtension(
+            client=TransactionsClient(
+                database=database, session=None, settings=auth_settings
+            ),
+            settings=auth_settings,
+        ),
+    ]
+    test_config["extensions"] = auth_extensions
+    test_config["client"] = CoreClient(
+        database=database,
+        session=None,
+        extensions=auth_extensions,
+        post_request_model=test_config["search_post_request_model"],
+    )
+
+    # 3. Create basic auth dependency
     basic_auth = Depends(
         BasicAuth(credentials=[{"username": "admin", "password": "admin"}])
     )
 
-    # Define public routes that don't require auth
+    # 4. Define public routes that don't require auth
     public_paths = {
         "/": ["GET"],
         "/conformance": ["GET"],
@@ -454,6 +493,47 @@ async def catalogs_app_client(catalogs_app):
         transport=ASGITransport(app=catalogs_app), base_url="http://test-server"
     ) as c:
         yield c
+
+
+def get_flattened_routes(router_obj, prefix=""):
+    """
+    Recursively extracts all flattened routes from a FastAPI app,
+    navigating through Mounts, APIRouters, and FastAPI >= 0.137 _IncludedRouters.
+    """
+    api_routes = set()
+    routes = getattr(router_obj, "routes", [])
+
+    for route in routes:
+        # 1. Standard Endpoints (APIRoute)
+        if hasattr(route, "methods") and route.methods:
+            for m in route.methods:
+                if m == "HEAD":
+                    continue
+                r_path = getattr(route, "path", "")
+                full_path = f"{prefix}{r_path}".replace("//", "/")
+                api_routes.add(f"{m} {full_path}")
+
+        # 2. Recurse into Mounts (Starlette)
+        if hasattr(route, "app") and hasattr(route.app, "routes"):
+            r_path = getattr(route, "path", getattr(route, "prefix", ""))
+            next_prefix = f"{prefix}{r_path}"
+            api_routes.update(get_flattened_routes(route.app, next_prefix))
+
+        # 3. Recurse into FastAPI >= 0.137 _IncludedRouter wrappers
+        if hasattr(route, "original_router"):
+            r_prefix = getattr(route, "prefix", "")
+            if not r_prefix and hasattr(route, "include_context"):
+                r_prefix = getattr(route.include_context, "prefix", "")
+            next_prefix = f"{prefix}{r_prefix}"
+            api_routes.update(get_flattened_routes(route.original_router, next_prefix))
+
+        # 4. Recurse into classic FastAPI/Starlette Routers (< 0.137)
+        elif hasattr(route, "routes") and route is not router_obj:
+            r_path = getattr(route, "path", getattr(route, "prefix", ""))
+            next_prefix = f"{prefix}{r_path}"
+            api_routes.update(get_flattened_routes(route, next_prefix))
+
+    return api_routes
 
 
 @pytest_asyncio.fixture()

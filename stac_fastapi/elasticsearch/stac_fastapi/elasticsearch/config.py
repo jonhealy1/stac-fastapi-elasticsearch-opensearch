@@ -88,6 +88,17 @@ class ElasticsearchSettings(ApiSettings, ApiBaseSettings):
     enable_response_models: bool = False
     enable_direct_response: bool = get_bool_env("ENABLE_DIRECT_RESPONSE", default=False)
     raise_on_bulk_error: bool = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
+    enable_transactions_extensions: bool = get_bool_env(
+        "ENABLE_TRANSACTIONS_EXTENSIONS", default=True
+    )
+    enable_collections_search: bool = get_bool_env(
+        "ENABLE_COLLECTIONS_SEARCH", default=True
+    )
+    enable_collections_search_route: bool = get_bool_env(
+        "ENABLE_COLLECTIONS_SEARCH_ROUTE", default=False
+    )
+    enable_catalogs_route: bool = get_bool_env("ENABLE_CATALOGS_ROUTE", default=False)
+    hide_alternate_parents: bool = get_bool_env("HIDE_ALTERNATE_PARENTS", default=False)
 
     @property
     def root_queryables_union(self) -> bool:

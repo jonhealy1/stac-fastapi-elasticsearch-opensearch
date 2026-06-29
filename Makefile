@@ -82,11 +82,13 @@ test-elasticsearch-validation: image-es-os
 
 .PHONY: test-opensearch
 test-opensearch: image-es-os
+	docker compose up -d opensearch redis
 	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest'
 	docker compose down
 
 .PHONY: test-opensearch-catalogs
 test-opensearch-catalogs: image-es-os
+	docker compose up -d opensearch redis
 	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest extensions/test_catalogs.py -v'
 	docker compose down
 
@@ -97,6 +99,7 @@ test-datetime-filtering-es: image-es-os
 
 .PHONY: test-datetime-filtering-os
 test-datetime-filtering-os: image-es-os
+	docker compose up -d opensearch redis
 	-$(run_os) /bin/bash -c 'export ENABLE_DATETIME_INDEX_FILTERING=true && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest -s --cov=stac_fastapi --cov-report=term-missing -m datetime_filtering'
 	docker compose down
 

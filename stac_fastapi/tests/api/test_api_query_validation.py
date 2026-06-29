@@ -6,28 +6,16 @@ import pytest
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
-if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
-    from stac_fastapi.opensearch.app import app_config
-else:
-    from stac_fastapi.elasticsearch.app import app_config
 
-
-def get_core_client():
-    if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
-        from stac_fastapi.opensearch.app import app_config
-    else:
-        from stac_fastapi.elasticsearch.app import app_config
-    return app_config["client"]
-
-
-def reload_queryables_settings():
-    client = get_core_client()
+def reload_queryables_settings(client):
     if hasattr(client, "queryables_cache"):
         client.queryables_cache.reload_settings()
 
 
 @pytest.fixture(autouse=True)
-def enable_validation():
+def enable_validation(app_client):
+    # Get the client from the app fixture
+    from ..conftest import app_config
 
     client = app_config["client"]
     with mock.patch.dict(os.environ, {"VALIDATE_QUERYABLES": "true"}):
@@ -88,6 +76,7 @@ async def test_item_collection_get_filter_invalid_param(app_client, ctx):
 
 async def test_validate_queryables_excluded(app_client, ctx):
     """Test that excluded queryables are rejected when validation is enabled."""
+    from ..conftest import app_config
 
     excluded_field = "eo:cloud_cover"
     client = app_config["client"]

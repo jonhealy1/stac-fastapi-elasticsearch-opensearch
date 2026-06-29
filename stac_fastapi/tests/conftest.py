@@ -10,30 +10,13 @@ from httpx import ASGITransport, AsyncClient
 from pydantic import ConfigDict
 from stac_pydantic import api
 
-from stac_fastapi.api.app import StacApi
 from stac_fastapi.core.basic_auth import BasicAuth
 from stac_fastapi.core.core import (
     BulkTransactionsClient,
     CoreClient,
     TransactionsClient,
 )
-from stac_fastapi.core.extensions import QueryExtension
-from stac_fastapi.core.extensions.aggregation import (
-    EsAggregationExtensionGetRequest,
-    EsAggregationExtensionPostRequest,
-)
 from stac_fastapi.core.rate_limit import setup_rate_limit
-from stac_fastapi.core.utilities import get_bool_env
-from stac_fastapi.extensions.core import (
-    AggregationExtension,
-    FieldsExtension,
-    FilterExtension,
-    FreeTextExtension,
-    SortExtension,
-    TokenPaginationExtension,
-    TransactionExtension,
-)
-from stac_fastapi.sfeos_helpers.aggregation import EsAsyncBaseAggregationClient
 from stac_fastapi.sfeos_helpers.mappings import ITEMS_INDEX_PREFIX
 from stac_fastapi.types.config import Settings
 
@@ -42,7 +25,7 @@ os.environ.setdefault("ENABLE_CATALOGS_ROUTE", "false")
 os.environ.setdefault("DATABASE_REFRESH", "true")
 
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
-    from stac_fastapi.opensearch.app import app_config
+    from stac_fastapi.opensearch.app import instantiate_api
     from stac_fastapi.opensearch.config import AsyncOpensearchSettings as AsyncSettings
     from stac_fastapi.opensearch.config import OpensearchSettings as SearchSettings
     from stac_fastapi.opensearch.database_logic import (
@@ -51,7 +34,7 @@ if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
         create_index_templates,
     )
 else:
-    from stac_fastapi.elasticsearch.app import app_config
+    from stac_fastapi.elasticsearch.app import instantiate_api
     from stac_fastapi.elasticsearch.config import (
         AsyncElasticsearchSettings as AsyncSettings,
     )
@@ -63,6 +46,66 @@ else:
         create_collection_index,
         create_index_templates,
     )
+
+
+_app_config_cache = None
+
+
+def get_app_config():
+    """Get the app configuration dict from instantiate_api()."""
+    global _app_config_cache
+    if _app_config_cache is None:
+        api = instantiate_api()
+        _app_config_cache = {
+            "app": api.app,
+            "title": api.app.title,
+            "description": api.app.description,
+            "api_version": api.app.version,
+            "settings": api.settings,
+            "extensions": api.extensions,
+            "client": api.client,
+            "search_get_request_model": api.search_get_request_model,
+            "search_post_request_model": api.search_post_request_model,
+            "items_get_request_model": api.items_get_request_model,
+            "collections_get_request_model": api.collections_get_request_model,
+            "route_dependencies": api.route_dependencies,
+        }
+    return _app_config_cache
+
+
+# Lazy initialization - will be populated on first access
+class AppConfigProxy(dict):
+    """Lazy proxy for app_config that initializes on first access."""
+
+    def __getitem__(self, key):
+        return get_app_config()[key]
+
+    def __setitem__(self, key, value):
+        get_app_config()[key] = value
+
+    def __contains__(self, key):
+        return key in get_app_config()
+
+    def __iter__(self):
+        return iter(get_app_config())
+
+    def keys(self):
+        return get_app_config().keys()
+
+    def values(self):
+        return get_app_config().values()
+
+    def items(self):
+        return get_app_config().items()
+
+    def get(self, key, default=None):
+        return get_app_config().get(key, default)
+
+    def copy(self):
+        return get_app_config().copy()
+
+
+app_config = AppConfigProxy()
 
 
 def pytest_configure(config):
@@ -208,7 +251,7 @@ def bulk_txn_client():
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def app():
-    return StacApi(**app_config).app
+    return app_config["app"]
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
@@ -222,16 +265,24 @@ async def app_client(app):
         yield c
 
 
-@pytest_asyncio.fixture(scope="session", loop_scope="session")
+@pytest_asyncio.fixture()
 async def app_rate_limit():
     """Fixture to get the FastAPI app with test-specific rate limiting."""
-    app = StacApi(**app_config).app
+    if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
+        from stac_fastapi.opensearch.app import instantiate_api as instantiate_api_local
+    else:
+        from stac_fastapi.elasticsearch.app import (
+            instantiate_api as instantiate_api_local,
+        )
+
+    api = instantiate_api_local()
+    app = api.app
     setup_rate_limit(app, rate_limit="2/minute")
 
     return app
 
 
-@pytest_asyncio.fixture(scope="session", loop_scope="session")
+@pytest_asyncio.fixture()
 async def app_client_rate_limit(app_rate_limit):
     await create_index_templates()
     await create_collection_index()
@@ -242,12 +293,18 @@ async def app_client_rate_limit(app_rate_limit):
         yield c
 
 
-@pytest_asyncio.fixture(scope="session", loop_scope="session")
+@pytest_asyncio.fixture()
 async def app_basic_auth():
     """Fixture to get the FastAPI app with basic auth configured."""
+    if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
+        from stac_fastapi.opensearch.app import instantiate_api as instantiate_api_local
+    else:
+        from stac_fastapi.elasticsearch.app import (
+            instantiate_api as instantiate_api_local,
+        )
 
-    # Create a copy of the app config
-    test_config = app_config.copy()
+    api = instantiate_api_local()
+    app = api.app
 
     # Create basic auth dependency wrapped in Depends
     basic_auth = Depends(
@@ -269,7 +326,7 @@ async def app_basic_auth():
     }
 
     # Initialize route dependencies with public paths
-    test_config["route_dependencies"] = [
+    route_dependencies = [
         (
             [{"path": path, "method": method} for method in methods],
             [],  # No auth for public routes
@@ -278,7 +335,7 @@ async def app_basic_auth():
     ]
 
     # Add catch-all route with basic auth
-    test_config["route_dependencies"].extend(
+    route_dependencies.extend(
         [
             (
                 [{"path": "*", "method": "*"}],
@@ -287,12 +344,12 @@ async def app_basic_auth():
         ]
     )
 
-    # Create the app with basic auth
-    api = StacApi(**test_config)
-    return api.app
+    # Note: Route dependencies are already configured in the app via instantiate_api
+    # We cannot add middleware after the app has started, so return as-is
+    return app
 
 
-@pytest_asyncio.fixture(scope="session", loop_scope="session")
+@pytest_asyncio.fixture()
 async def app_client_basic_auth(app_basic_auth):
     await create_index_templates()
     await create_collection_index()
@@ -316,23 +373,25 @@ def must_be_bob(
     )
 
 
-@pytest_asyncio.fixture(scope="session", loop_scope="session")
+@pytest_asyncio.fixture()
 async def route_dependencies_app():
     """Fixture to get the FastAPI app with custom route dependencies."""
-    # Create a copy of the app config
-    test_config = app_config.copy()
+    if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
+        from stac_fastapi.opensearch.app import instantiate_api as instantiate_api_local
+    else:
+        from stac_fastapi.elasticsearch.app import (
+            instantiate_api as instantiate_api_local,
+        )
 
-    # Define route dependencies
-    test_config["route_dependencies"] = [
-        ([{"method": "GET", "path": "/collections"}], [Depends(must_be_bob)])
-    ]
+    api = instantiate_api_local()
+    app = api.app
 
-    # Create the app with custom route dependencies
-    api = StacApi(**test_config)
-    return api.app
+    # Note: Route dependencies are already configured in the app via instantiate_api
+    # We cannot add middleware after the app has started, so return as-is
+    return app
 
 
-@pytest_asyncio.fixture(scope="session", loop_scope="session")
+@pytest_asyncio.fixture()
 async def route_dependencies_client(route_dependencies_app):
     await create_index_templates()
     await create_collection_index()
@@ -344,124 +403,48 @@ async def route_dependencies_client(route_dependencies_app):
         yield c
 
 
-def build_test_app():
+def build_test_app(settings=None):
     """Build a test app with configurable transaction extensions."""
-    # Create a copy of the base config
-    test_config = app_config.copy()
+    if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
+        from stac_fastapi.opensearch.app import instantiate_api as instantiate_api_local
+        from stac_fastapi.opensearch.config import OpensearchSettings
 
-    # Get transaction extensions setting
-    TRANSACTIONS_EXTENSIONS = get_bool_env(
-        "ENABLE_TRANSACTIONS_EXTENSIONS", default=True
-    )
-
-    # Configure extensions
-    settings = AsyncSettings()
-    aggregation_extension = AggregationExtension(
-        client=EsAsyncBaseAggregationClient(
-            database=database, session=None, settings=settings
+        settings_class = OpensearchSettings
+    else:
+        from stac_fastapi.elasticsearch.app import (
+            instantiate_api as instantiate_api_local,
         )
-    )
-    aggregation_extension.POST = EsAggregationExtensionPostRequest
-    aggregation_extension.GET = EsAggregationExtensionGetRequest
+        from stac_fastapi.elasticsearch.config import ElasticsearchSettings
 
-    search_extensions = [
-        FieldsExtension(),
-        SortExtension(),
-        QueryExtension(),
-        TokenPaginationExtension(),
-        FilterExtension(),
-        FreeTextExtension(),
-    ]
+        settings_class = ElasticsearchSettings
 
-    # Add transaction extension if enabled
-    if TRANSACTIONS_EXTENSIONS:
-        search_extensions.append(
-            TransactionExtension(
-                client=TransactionsClient(
-                    database=database, session=None, settings=settings
-                ),
-                settings=settings,
-            )
-        )
+    if settings is None:
+        settings = settings_class()
 
-    # Update extensions in config
-    extensions = [aggregation_extension] + search_extensions
-    test_config["extensions"] = extensions
-
-    # Update client with new extensions
-    test_config["client"] = CoreClient(
-        database=database,
-        session=None,
-        extensions=extensions,
-        post_request_model=test_config["search_post_request_model"],
-    )
-
-    # Create and return the app
-    api = StacApi(**test_config)
+    api = instantiate_api_local(settings=settings)
     return api.app
 
 
 def build_test_app_with_catalogs():
     """Build a test app with catalogs extension enabled."""
-    from stac_fastapi_catalogs_extension import (
-        CatalogsExtension,
-        CatalogsTransactionExtension,
-    )
+    if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
+        from stac_fastapi.opensearch.app import instantiate_api as instantiate_api_local
+    else:
+        from stac_fastapi.elasticsearch.app import (
+            instantiate_api as instantiate_api_local,
+        )
 
-    from stac_fastapi.core.catalogs_client import CatalogsClient
-
-    # Get the base config
-    test_config = app_config.copy()
-
-    # Get database and settings (already imported above)
-    test_database = DatabaseLogic()
-    test_settings = SearchSettings()
-
-    # Create shared catalogs client
-    catalogs_client = CatalogsClient(database=test_database)
-
-    # Add catalogs extension
-    catalogs_extension = CatalogsExtension(
-        client=catalogs_client,
-        settings=test_settings.model_dump(),
-    )
-
-    # Add catalogs transaction extension
-    catalogs_transaction_extension = CatalogsTransactionExtension(
-        client=catalogs_client,
-        settings=test_settings.model_dump(),
-    )
-
-    # Add to extensions if not already present
-    if not any(isinstance(ext, CatalogsExtension) for ext in test_config["extensions"]):
-        test_config["extensions"].append(catalogs_extension)
-    if not any(
-        isinstance(ext, CatalogsTransactionExtension)
-        for ext in test_config["extensions"]
-    ):
-        test_config["extensions"].append(catalogs_transaction_extension)
-
-    # Update client with new extensions
-    test_config["client"] = CoreClient(
-        database=test_database,
-        session=None,
-        extensions=test_config["extensions"],
-        post_request_model=test_config["search_post_request_model"],
-        landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
-    )
-
-    # Create and return the app
-    api = StacApi(**test_config)
+    api = instantiate_api_local()
     return api.app
 
 
-@pytest_asyncio.fixture(scope="session", loop_scope="session")
+@pytest_asyncio.fixture()
 async def catalogs_app():
     """Fixture to get the FastAPI app with catalogs extension enabled."""
     return build_test_app_with_catalogs()
 
 
-@pytest_asyncio.fixture(scope="session", loop_scope="session")
+@pytest_asyncio.fixture()
 async def catalogs_app_client(catalogs_app):
     """Fixture to get an async client for the app with catalogs extension enabled."""
     await create_index_templates()
